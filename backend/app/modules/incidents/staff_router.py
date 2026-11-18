@@ -6,10 +6,11 @@ identity or access credentials. Permission names follow the database vocabulary;
 from the API contract's names is in docs/DECISIONS.md.
 
   incident.view   list/read incidents, their reports and history
-  incident.assess severity / confidence / freshness assessments
-  incident.verify verification decisions; publication approvals
-  incident.merge  merges
-  report.review   review queue, match candidates, report associations, quarantine decisions
+  incident.assess  severity / confidence / freshness assessments; operational status (PATCH)
+  incident.correct title, description, category and location corrections (PATCH)
+  incident.verify  verification decisions; publication approvals
+  incident.merge   merges
+  report.review    review queue, match candidates, report (un)associations, quarantine decisions
 """
 import uuid
 from typing import Annotated, Literal
@@ -113,22 +114,19 @@ def list_incidents(
     return {"items": [_incident_summary(r) for r in rows], "next_cursor": next_cursor}
 
 
-@router.get("/incidents/{incident_id}")
-def get_incident(incident_id: uuid.UUID, response: Response,
-                 _: Annotated[Principal, Depends(require("incident.view"))]) -> dict:
-    with get_dashboard_engine().connect() as conn:
-        r = conn.execute(text(f"""
-            SELECT {_INCIDENT_COLUMNS}, p.id AS public_id, p.publication_state, p.is_visible
-            FROM incident.incidents i
-            JOIN ref.incident_categories c ON c.id = i.category_id
-            LEFT JOIN disclosure.public_incident_projections p ON p.incident_id = i.id
-            WHERE i.id = :id
-        """), {"id": incident_id}).first()
+def _incident_detail(conn, incident_id: uuid.UUID) -> dict:
+    r = conn.execute(text(f"""
+        SELECT {_INCIDENT_COLUMNS}, i.lock_version, p.id AS public_id, p.publication_state, p.is_visible
+        FROM incident.incidents i
+        JOIN ref.incident_categories c ON c.id = i.category_id
+        LEFT JOIN disclosure.public_incident_projections p ON p.incident_id = i.id
+        WHERE i.id = :id
+    """), {"id": incident_id}).first()
     if r is None:
         raise ApiError(404, "resource_not_found", "The resource was not found.")
-    _no_store(response)
     return {
         **_incident_summary(r),
+        "version": r.lock_version,
         "description": r.description,
         "location": {"latitude": r.lat, "longitude": r.lon, "uncertainty_m": r.location_uncertainty_m},
         "freshness_status": r.freshness_status,
@@ -138,6 +136,15 @@ def get_incident(incident_id: uuid.UUID, response: Response,
         "public": ({"public_id": str(r.public_id), "publication_state": r.publication_state,
                     "on_map": r.is_visible and r.publication_state == "published"} if r.public_id else None),
     }
+
+
+@router.get("/incidents/{incident_id}")
+def get_incident(incident_id: uuid.UUID, response: Response,
+                 _: Annotated[Principal, Depends(require("incident.view"))]) -> dict:
+    with get_dashboard_engine().connect() as conn:
+        detail = _incident_detail(conn, incident_id)
+    _no_store(response)
+    return detail
 
 
 @router.get("/incidents/{incident_id}/reports")
@@ -178,6 +185,10 @@ def incident_history(incident_id: uuid.UUID, response: Response,
                    r.source_incident_id::text, r.target_incident_id::text, r.reason, r.created_at
             FROM incident.incident_relationships r
             WHERE r.source_incident_id = :id OR r.target_incident_id = :id
+            UNION ALL
+            SELECT 'corrected_' || k.field_name, 'user', k.actor_id,
+                   k.previous_value::text, k.corrected_value::text, k.reason, k.created_at
+            FROM incident.incident_corrections k WHERE k.incident_id = :id
             ORDER BY created_at
         """), {"id": incident_id}).all()
     _no_store(response)
@@ -231,6 +242,45 @@ def verify(incident_id: uuid.UUID, body: VerifyIn, response: Response,
             "updated_at": r.updated_at.isoformat()}
 
 
+class LocationIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
+    uncertainty_m: int | None = Field(default=None, ge=0, le=100_000)
+
+
+class IncidentPatch(BaseModel):
+    """Only the fields sent are changed. `reason` is required and lands in the history."""
+    model_config = ConfigDict(extra="forbid")
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=4000)
+    category: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_]+$")
+    location: LocationIn | None = None
+    operational_status: Literal["active", "monitoring", "resolved", "closed"] | None = None
+    severity: Literal["unknown", "low", "moderate", "high", "critical"] | None = None
+    reason: Reason
+    expected_version: int | None = Field(default=None, ge=1)
+
+
+@router.patch("/incidents/{incident_id}")
+def update_incident(incident_id: uuid.UUID, body: IncidentPatch, response: Response,
+                    principal: Annotated[Principal, Depends(require("incident.view"))]) -> dict:
+    """Corrections need incident.correct; operational_status and severity need incident.assess.
+    Verification decisions use POST /incidents/{id}/verify."""
+    changes = {f: getattr(body, f) for f in body.model_fields_set if f not in ("reason", "expected_version")}
+    for f, v in changes.items():
+        if v is None and f != "description":
+            raise ApiError(422, "validation_error", "The submitted request is invalid.",
+                           [{"field": f, "message": "This field cannot be empty."}])
+    if "location" in changes:
+        changes["location"] = changes["location"].model_dump()
+    with get_dashboard_engine().begin() as conn:
+        result = svc.update_incident(conn, principal, incident_id, changes, body.reason, body.expected_version)
+        detail = _incident_detail(conn, incident_id)
+    _no_store(response)
+    return {**detail, "changed": list(result.changed)}
+
+
 class AssessmentIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     assessment_type: Literal["severity", "confidence", "freshness", "verification", "geographic_impact"]
@@ -263,6 +313,22 @@ def associate(incident_id: uuid.UUID, body: AssociationIn, response: Response,
         svc.associate_report(conn, principal, incident_id, body.report_id, body.reason)
     _no_store(response)
     return {"report_id": str(body.report_id), "incident_id": str(incident_id), "association_status": "associated"}
+
+
+class UnassociateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    reason: Reason
+
+
+@router.post("/reports/{report_id}/unassociate")
+def unassociate(report_id: uuid.UUID, body: UnassociateIn, response: Response,
+                principal: Annotated[Principal, Depends(require("report.review"))]) -> dict:
+    with get_dashboard_engine().begin() as conn:
+        r = svc.unassociate_report(conn, principal, report_id, body.reason)
+    _no_store(response)
+    return {"report_id": str(report_id), "result": r.outcome,
+            "previous_incident_id": str(r.previous_incident_id) if r.previous_incident_id else None,
+            "incident_remaining_reports": r.remaining_reports}
 
 
 class MergeIn(BaseModel):

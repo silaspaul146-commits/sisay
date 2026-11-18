@@ -49,7 +49,9 @@ contract wins on client-facing names where Appendix A recommends it.
 | Staff provisioning | Not specified | `python -m app.manage grant --subject <sub> --email <e> reviewer` (owner connection). Unknown subjects are refused; accounts are never auto-created on first sign-in. |
 | Organization reviewers | API contract allows them to verify | Not in this phase: only platform permissions authorize staff routes. Org-scoped access comes with the organizations phase. |
 | Assessment types | Contract lists `geographic_impact` | Not in the DB CHECK; rejected with 422 until the schema adds it. |
-| Not yet built | `POST /incidents` (manual create), `PATCH /incidents` (correction), reviewer notes | Next staff increment. |
+| `PATCH /incidents/{id}` | Contract sends `operational_status: "ongoing"` and mixes corrections with status | Fields: `title`, `description`, `category`, `location`, `operational_status` (`active`/`monitoring`/`resolved`/`closed`), `severity`, plus a required `reason` and optional `expected_version` (409 `version_conflict` if someone changed it meanwhile). Content fields need `incident.correct`; status and severity need `incident.assess`. Each corrected field writes an `incident_corrections` row (old and new value); status and severity write assessments (migration 0016 adds the `operational` type). Category, location or description changes restrict the public projection at once and the worker regenerates it. The `reviewer` bundle now includes `incident.correct`. |
+| Unlinking a report | Contract inventory: `POST /reports/{id}/unassociate` | Built as listed (`report.review`, reason required). Writes `review_unassign` history; the report stays and can be linked again. The response gives the incident's remaining report count so the dashboard can suggest closing an empty incident. |
+| Not yet built | `POST /incidents` (manual create), reviewer notes, incident split | Next staff increment. |
 
 ## Product-owner decisions (2026-11-18)
 

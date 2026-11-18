@@ -86,7 +86,8 @@ def db_roles(rotate: bool) -> None:
 PERMISSIONS = ("incident.view", "incident.assess", "incident.verify", "incident.correct", "incident.merge",
                "report.review", "reporter_identity.view", "evidence.view_restricted", "alert.issue",
                "alert.withdraw", "disclosure_policy.manage", "platform.admin")
-REVIEWER_BUNDLE = ("incident.view", "incident.assess", "incident.verify", "incident.merge", "report.review")
+REVIEWER_BUNDLE = ("incident.view", "incident.assess", "incident.verify", "incident.correct", "incident.merge",
+                   "report.review")
 
 
 def grant(subject: str, email: str | None, permissions: list[str], revoke: bool) -> None:

@@ -300,3 +300,107 @@ def test_merge_moves_reports_and_redirects(client, drain, engine, staff):
                        json={"source_incident_id": b, "reason": "again"}).status_code == 409
     assert client.post(f"/api/v1/incidents/{a}/merge", headers=h,
                        json={"source_incident_id": a, "reason": "self"}).status_code == 422
+
+
+# --- Corrections, status changes and unlinking (PATCH /incidents, unassociate) -----------------
+
+EDITOR = REVIEWER + ("incident.correct",)
+
+
+def test_status_change_is_recorded_and_shown_publicly(client, drain, engine, staff):
+    iid = incident_of(engine, one_incident(client, drain))
+    h = staff(*REVIEWER)
+    resp = client.patch(f"/api/v1/incidents/{iid}", headers=h,
+                        json={"operational_status": "resolved", "reason": "Fire service confirmed it is out."})
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["changed"] == ["operational_status"] and body["operational_status"] == "resolved"
+    drain()
+    feature = client.get(f"/api/v1/public/incidents?bbox={bbox()}").json()["features"][0]
+    assert feature["properties"]["lifecycle"] == "resolved"
+    events = [e for e in client.get(f"/api/v1/incidents/{iid}/history", headers=h).json()["items"]
+              if e["event_type"] == "operational_assessed"]
+    assert events[0]["new_value"] == "resolved" and events[0]["reason"].startswith("Fire service")
+    assert scalar(engine, "SELECT count(*) FROM ops.audit_logs WHERE action = 'incident.status_change'") == 1
+    # merged/withdrawn are not settable here
+    bad = client.patch(f"/api/v1/incidents/{iid}", headers=h, json={"operational_status": "merged", "reason": "x" * 5})
+    assert bad.status_code == 422
+
+
+def test_corrections_keep_old_values_and_need_their_own_permission(client, drain, engine, staff):
+    iid = incident_of(engine, one_incident(client, drain))
+    assessor = staff(*REVIEWER)  # no incident.correct
+    denied = client.patch(f"/api/v1/incidents/{iid}", headers=assessor,
+                          json={"title": "Market fire", "reason": "Clearer title"})
+    assert denied.status_code == 403
+    h = staff(*EDITOR)
+    resp = client.patch(f"/api/v1/incidents/{iid}", headers=h,
+                        json={"title": "Market fire", "category": "explosion",
+                              "reason": "Gas cylinder explosion, not a fire."})
+    assert resp.status_code == 200, resp.text
+    assert sorted(resp.json()["changed"]) == ["category", "title"] and resp.json()["category"] == "explosion"
+    rows = scalar_rows(engine, "SELECT field_name, previous_value, corrected_value FROM incident.incident_corrections "
+                               "ORDER BY field_name")
+    assert [r.field_name for r in rows] == ["category_id", "title"]
+    assert rows[1].corrected_value == "Market fire"
+    history = [e["event_type"] for e in client.get(f"/api/v1/incidents/{iid}/history", headers=h).json()["items"]]
+    assert "corrected_title" in history and "corrected_category_id" in history
+    unknown = client.patch(f"/api/v1/incidents/{iid}", headers=h, json={"category": "dragons", "reason": "test"})
+    assert unknown.status_code == 422
+
+
+def test_location_correction_hides_the_old_public_point_until_regenerated(client, drain, engine, staff):
+    iid = incident_of(engine, one_incident(client, drain))
+    public_id = client.get(f"/api/v1/public/incidents?bbox={bbox()}").json()["features"][0]["id"]
+    lat, lon = offset(BASE_LAT, BASE_LON, east_m=8000)
+    resp = client.patch(f"/api/v1/incidents/{iid}", headers=staff(*EDITOR),
+                        json={"location": {"latitude": lat, "longitude": lon, "uncertainty_m": 150},
+                              "reason": "Reporter pinned their own house; event was at Mile 4."})
+    assert resp.status_code == 200, resp.text
+    assert client.get(f"/api/v1/public/incidents/{public_id}").status_code == 404  # fail closed before the worker
+    drain()
+    assert client.get(f"/api/v1/public/incidents?bbox={bbox(0.02)}").json()["features"] == []
+    moved = client.get(f"/api/v1/public/incidents?bbox={lon - 0.03},{lat - 0.03},{lon + 0.03},{lat + 0.03}").json()
+    assert len(moved["features"]) == 1
+
+
+def test_stale_version_is_rejected(client, drain, engine, staff):
+    iid = incident_of(engine, one_incident(client, drain))
+    h = staff(*EDITOR)
+    version = client.get(f"/api/v1/incidents/{iid}", headers=h).json()["version"]
+    ok = client.patch(f"/api/v1/incidents/{iid}", headers=h,
+                      json={"severity": "high", "reason": "Three houses", "expected_version": version})
+    assert ok.status_code == 200 and ok.json()["version"] == version + 1
+    stale = client.patch(f"/api/v1/incidents/{iid}", headers=h,
+                         json={"severity": "low", "reason": "Small", "expected_version": version})
+    assert stale.status_code == 409 and stale.json()["error"]["code"] == "version_conflict"
+    assert scalar(engine, "SELECT severity FROM incident.incidents") == "high"
+    empty = client.patch(f"/api/v1/incidents/{iid}", headers=h, json={"reason": "nothing"})
+    assert empty.status_code == 422
+
+
+def test_unlinking_a_report_keeps_it_and_its_history(client, drain, engine, staff):
+    rid_a = one_incident(client, drain)
+    lat, lon = offset(BASE_LAT, BASE_LON, east_m=100)
+    rid_b = one_incident(client, drain, lat=lat, lon=lon)
+    iid = incident_of(engine, rid_a)
+    assert incident_of(engine, rid_b) == iid
+    h = staff(*REVIEWER)
+    resp = client.post(f"/api/v1/reports/{rid_b}/unassociate", headers=h,
+                       json={"reason": "Different fire across the valley."})
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == {"report_id": rid_b, "result": "unassociated", "previous_incident_id": iid,
+                           "incident_remaining_reports": 1}
+    assert scalar(engine, "SELECT incident_id FROM reporting.reports WHERE id = :id", id=rid_b) is None
+    actions = [r[0] for r in scalar_rows(engine, "SELECT action FROM reporting.report_association_history "
+                                                 "WHERE report_id = :id ORDER BY created_at", id=rid_b)]
+    assert actions[-1] == "review_unassign"
+    again = client.post(f"/api/v1/reports/{rid_b}/unassociate", headers=h, json={"reason": "again"})
+    assert again.json()["result"] == "unchanged"
+    # it can be linked again later
+    relink = client.post(f"/api/v1/incidents/{iid}/report-associations", headers=h,
+                         json={"report_id": rid_b, "reason": "Same fire after all."})
+    assert relink.status_code == 200
+    assert scalar(engine, "SELECT report_count FROM incident.incidents WHERE id = :id", id=iid) == 2
+    assert client.post(f"/api/v1/reports/{rid_b}/unassociate", headers=staff("incident.view"),
+                       json={"reason": "nope"}).status_code == 403
