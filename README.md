@@ -20,7 +20,7 @@ generalized public projection → public GeoJSON map.
 | `GET /api/v1/incident-categories` | Done |
 | Outbox worker: matching (policy `match-2026.11.1`), projection refresh, freshness sweep | Done |
 | Nightly retention: reports redacted after 30 days, reporter links purged after 7 (U-2) | Done |
-| Neon + Render deployment (`render.yaml`, `python -m app.manage`, [docs/DEPLOY.md](docs/DEPLOY.md)) | Ready; waiting for the Neon and Render accounts |
+| Neon + Render deployment (`render.yaml`, `python -m app.manage`, [docs/DEPLOY.md](docs/DEPLOY.md)) | Live at https://sisay.onrender.com (one free Render service, worker in-process) |
 | Tests: 69 unit + 35 integration (migrations, triggers, spatial SQL, slice, staff API) | All pass in CI on PostGIS 18 / Python 3.14 |
 | Staff API: OIDC sign-in, incidents list/detail/history, verify, assess, associations, merge, review queue | Done; answers 503 until an OIDC provider is configured (docs/DEPLOY.md) |
 | Evidence upload, alerts, subscriptions, journey checks, organizations, intelligence, Flutter app, Next.js dashboard | Not started |
