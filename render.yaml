@@ -1,0 +1,46 @@
+# Render Blueprint: API web service + background worker, both from backend/Dockerfile.
+# Database: Neon (not Render Postgres). Connection strings are entered in the Render dashboard
+# (sync: false) and never committed. See docs/DEPLOY.md.
+envVarGroups:
+  - name: crisis-shared
+    envVars:
+      - key: APP_ENV
+        value: staging
+      # HMAC pepper for anonymous report tokens. Generated once by Render.
+      # NEVER regenerate it: every existing report token would stop working.
+      - key: TOKEN_PEPPER
+        generateValue: true
+
+services:
+  - type: web
+    name: crisis-api
+    runtime: docker
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    region: ohio               # must match the Neon region (aws-us-east-2)
+    plan: starter              # preDeployCommand needs a paid plan
+    healthCheckPath: /health
+    preDeployCommand: alembic upgrade head
+    autoDeploy: true
+    envVars:
+      - fromGroup: crisis-shared
+      - key: DATABASE_URL            # app_citizen role, Neon pooled endpoint (-pooler) is fine
+        sync: false
+      - key: PUBLIC_DATABASE_URL     # app_public role
+        sync: false
+      - key: MIGRATION_DATABASE_URL  # owner role, Neon DIRECT endpoint (no -pooler)
+        sync: false
+
+  - type: worker
+    name: crisis-worker
+    runtime: docker
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    dockerCommand: python -m app.worker
+    region: ohio
+    plan: starter
+    autoDeploy: true
+    envVars:
+      - fromGroup: crisis-shared
+      - key: DATABASE_URL            # app_worker role; worker derives the direct endpoint for LISTEN
+        sync: false

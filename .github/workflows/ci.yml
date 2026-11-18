@@ -1,0 +1,38 @@
+# Unit + integration tests against the same PostgreSQL/PostGIS major versions as Neon production.
+name: ci
+on:
+  push:
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgis/postgis:18-3.6
+        env:
+          POSTGRES_DB: crisis
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d crisis"
+          --health-interval 2s --health-timeout 5s --health-retries 30
+    env:
+      PGPASSWORD: postgres
+      TEST_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/crisis_test
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+      - run: pip install -e ".[dev]"
+      - name: Runtime roles and test database
+        run: psql -h localhost -U postgres -d crisis -v ON_ERROR_STOP=1 -f ../infra/db/init/00_roles.sql
+      - name: Tests (unit + integration, including migration up/down/up)
+        run: pytest -rs -q

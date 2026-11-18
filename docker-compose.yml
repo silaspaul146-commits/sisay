@@ -1,0 +1,44 @@
+# Local development stack: PostGIS, one-shot migrations, API and worker (Engineering pack 10.1).
+services:
+  db:
+    image: postgis/postgis:18-3.6
+    environment:
+      POSTGRES_DB: crisis
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports: ["5432:5432"]
+    volumes:
+      - pgdata:/var/lib/postgresql
+      - ./infra/db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d crisis"]
+      interval: 2s
+      retries: 30
+
+  migrate:
+    build: ./backend
+    command: ["alembic", "upgrade", "head"]
+    environment: &env
+      APP_ENV: development
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@db:5432/crisis
+      PUBLIC_DATABASE_URL: postgresql+psycopg://app_public:app_public@db:5432/crisis
+      MIGRATION_DATABASE_URL: postgresql+psycopg://postgres:postgres@db:5432/crisis
+    depends_on:
+      db: {condition: service_healthy}
+
+  api:
+    build: ./backend
+    environment: *env
+    ports: ["8000:8000"]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+
+  worker:
+    build: ./backend
+    command: ["python", "-m", "app.worker"]
+    environment: *env
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+
+volumes:
+  pgdata:
