@@ -42,6 +42,8 @@ def alembic_config():
 @pytest.fixture(scope="session")
 def migrated_db():
     if not TEST_URL:
+        if os.environ.get("CI"):
+            pytest.fail("TEST_DATABASE_URL must be set in CI: integration tests may not be skipped there")
         pytest.skip("TEST_DATABASE_URL not set: integration tests need PostgreSQL + PostGIS")
     os.environ.update({"DATABASE_URL": TEST_URL, "MIGRATION_DATABASE_URL": TEST_URL, "APP_ENV": "test"})
     os.environ.pop("PUBLIC_DATABASE_URL", None)
