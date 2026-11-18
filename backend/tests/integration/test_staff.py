@@ -148,6 +148,8 @@ def test_reviewer_resolves_an_ambiguous_match_by_association(client, drain, engi
     h = staff(*REVIEWER)
     items = client.get("/api/v1/review/items?item_type=ambiguous_match", headers=h).json()["items"]
     assert len(items) == 1 and items[0]["report_id"] == rid
+    assert items[0]["summary"]["category"] == "fire" and items[0]["summary"]["candidate_count"] == 2
+    assert items[0]["summary"]["report_reference"]
     item_id = items[0]["id"]
 
     detail = client.get(f"/api/v1/review/items/{item_id}", headers=h).json()

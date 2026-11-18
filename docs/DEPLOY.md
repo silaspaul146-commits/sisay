@@ -73,4 +73,22 @@ answer 503 and nothing else is affected.
 3. Set `DASHBOARD_DATABASE_URL` to the `app_dashboard` URL that `db-roles` printed.
 4. For each staff member, copy their provider user id (`sub`) and run, with the owner URL:
    `python -m app.manage grant --subject '<sub>' --email person@org reviewer`
-   (`reviewer` = incident.view, assess, verify, merge, report.review). Revoke with `--revoke`.
+   (`reviewer` = incident.view, assess, verify, correct, merge, report.review). Revoke with `--revoke`.
+
+## Review dashboard (static site)
+
+`dashboard/` is a Next.js app exported as static files. It signs reviewers in with Auth0 in the
+browser (Authorization Code + PKCE, tokens in memory only) and calls the API directly.
+
+1. In Auth0: **Applications -> Create Application -> Single Page Application** ("Sisay Review").
+   In its Settings set Allowed Callback URLs, Allowed Logout URLs and Allowed Web Origins to the
+   dashboard URL (e.g. `https://sisay-review.onrender.com`, plus `http://localhost:3000` for local
+   work). Under **APIs -> Sisay API -> Machine to Machine / Application Access**, allow the new
+   application to request tokens for the API if your tenant requires it.
+2. In Render: **New -> Static Site**, repo as before, Root Directory `dashboard`, Build Command
+   `npm ci && npm run build`, Publish Directory `out`. Environment: `NEXT_PUBLIC_API_BASE`,
+   `NEXT_PUBLIC_AUTH0_DOMAIN`, `NEXT_PUBLIC_AUTH0_CLIENT_ID`, `NEXT_PUBLIC_AUTH0_AUDIENCE`
+   (see `dashboard/.env.example`). Add the security headers listed in `render.yaml`
+   (Settings -> Headers).
+3. On the API service set `CORS_ORIGINS` to the dashboard URL (comma-separate several; exact match,
+   no trailing slash). Without it the browser blocks the dashboard's requests.

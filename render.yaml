@@ -31,6 +31,34 @@ services:
       - key: MIGRATION_DATABASE_URL  # owner role, Neon DIRECT endpoint (no -pooler)
         sync: false
 
+  # Staff review dashboard: static files, free, never sleeps. Values are public (browser bundle).
+  - type: web
+    name: sisay-review
+    runtime: static
+    rootDir: dashboard
+    buildCommand: npm ci && npm run build
+    staticPublishPath: out
+    autoDeploy: true
+    envVars:
+      - key: NEXT_PUBLIC_API_BASE
+        value: https://sisay.onrender.com/api/v1
+      - key: NEXT_PUBLIC_AUTH0_AUDIENCE
+        value: https://sisay.onrender.com/api
+      - key: NEXT_PUBLIC_AUTH0_DOMAIN
+        sync: false
+      - key: NEXT_PUBLIC_AUTH0_CLIENT_ID
+        sync: false
+    headers:
+      - path: /*
+        name: Content-Security-Policy
+        value: "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self' https://sisay.onrender.com https://*.auth0.com; frame-src https://*.auth0.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
+
   - type: worker
     name: crisis-worker
     runtime: docker

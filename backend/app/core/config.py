@@ -44,6 +44,14 @@ class Settings(BaseSettings):
     run_worker_in_api: bool = False
     worker_database_url: str | None = None
 
+    # Browser origins allowed to call the API (the staff dashboard), comma-separated, exact match,
+    # e.g. "https://sisay-review.onrender.com,http://localhost:3000". Empty: no cross-origin access.
+    cors_origins: str = ""
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        return [o.strip().rstrip("/") for o in self.cors_origins.split(",") if o.strip()]
+
     # Anonymous report credentials (DB spec 7.3). Peppers are secrets: supply them via the
     # secret store in any shared environment. Format: {"1": "<random secret>"}.
     token_peppers: dict[int, str] = Field(default_factory=lambda: {1: "dev-only-pepper-change-me"})

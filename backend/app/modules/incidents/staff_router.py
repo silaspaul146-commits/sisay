@@ -361,29 +361,42 @@ def list_review_items(
 ) -> dict:
     params: dict = {"limit": limit + 1}
     if status is None:
-        where = ["status IN ('open','claimed')"]
+        where = ["ri.status IN ('open','claimed')"]
     else:
-        where = ["status = :status"]
+        where = ["ri.status = :status"]
         params["status"] = status
     if item_type:
-        where.append("item_type = :item_type")
+        where.append("ri.item_type = :item_type")
         params["item_type"] = item_type
     if cursor:
         params["c_t"], params["c_id"] = decode_cursor(cursor)
-        where.append("(created_at, id) > (:c_t, :c_id)")
+        where.append("(ri.created_at, ri.id) > (:c_t, :c_id)")
     with get_dashboard_engine().connect() as conn:
         rows = conn.execute(text(f"""
-            SELECT id, item_type, status, priority, report_id, incident_id, match_decision_id,
-                   assigned_to, resolution, created_at
-            FROM review.review_items WHERE {' AND '.join(where)}
-            ORDER BY created_at, id LIMIT :limit
+            SELECT ri.id, ri.item_type, ri.status, ri.priority, ri.report_id, ri.incident_id,
+                   ri.match_decision_id, ri.assigned_to, ri.resolution, ri.created_at,
+                   COALESCE(ic.code, rc.code) AS category, i.title AS incident_title,
+                   i.report_count AS incident_report_count, r.public_reference AS report_reference,
+                   (SELECT count(*) FROM reporting.report_match_candidates m
+                     WHERE m.match_decision_id = ri.match_decision_id) AS candidate_count
+            FROM review.review_items ri
+            LEFT JOIN incident.incidents i ON i.id = ri.incident_id
+            LEFT JOIN ref.incident_categories ic ON ic.id = i.category_id
+            LEFT JOIN reporting.reports r ON r.id = ri.report_id
+            LEFT JOIN ref.incident_categories rc ON rc.id = r.category_id
+            WHERE {' AND '.join(where)}
+            ORDER BY ri.created_at, ri.id LIMIT :limit
         """), params).all()
     next_cursor = None
     if len(rows) > limit:
         rows = rows[:limit]
         next_cursor = encode_cursor(rows[-1].created_at, rows[-1].id)
     _no_store(response)
-    return {"items": [_item(r) for r in rows], "next_cursor": next_cursor}
+    return {"items": [{**_item(r), "summary": {
+                "category": r.category, "incident_title": r.incident_title,
+                "incident_report_count": r.incident_report_count, "report_reference": r.report_reference,
+                "candidate_count": r.candidate_count}} for r in rows],
+            "next_cursor": next_cursor}
 
 
 def _item(r) -> dict:

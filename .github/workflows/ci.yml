@@ -36,3 +36,25 @@ jobs:
         run: psql -h localhost -U postgres -d crisis -v ON_ERROR_STOP=1 -f ../infra/db/init/00_roles.sql
       - name: Tests (unit + integration, including migration up/down/up)
         run: pytest -rs -q
+
+  dashboard:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dashboard
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+      NEXT_PUBLIC_API_BASE: https://api.example.test/api/v1
+      NEXT_PUBLIC_AUTH0_DOMAIN: example.auth0.com
+      NEXT_PUBLIC_AUTH0_CLIENT_ID: ci-placeholder
+      NEXT_PUBLIC_AUTH0_AUDIENCE: https://api.example.test/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build

@@ -4,6 +4,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import APIRouter, FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
@@ -45,6 +46,17 @@ def create_app() -> FastAPI:
         redoc_url=None,
     )
     install_error_handlers(app)
+    if settings.cors_origin_list:
+        # Added last, so it is the outermost middleware and also answers preflight requests.
+        # Bearer tokens only: no cookies, so credentials stay off.
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=settings.cors_origin_list,
+            allow_methods=["GET", "POST", "PATCH"],
+            allow_headers=["Authorization", "Content-Type", "Idempotency-Key", "X-Request-Id"],
+            expose_headers=["X-Request-Id"],
+            max_age=600,
+        )
 
     api = APIRouter(prefix="/api/v1")
     api.include_router(reference_router)
