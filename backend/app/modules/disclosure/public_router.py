@@ -4,8 +4,6 @@ Reads only disclosure.public_incidents_v and disclosure.public_incident_removals
 public database role. Responses are GeoJSON; coordinates are [longitude, latitude] and are the
 generalized public point, never the internal or reporter location.
 """
-import base64
-import json
 import uuid
 from datetime import UTC, datetime
 from typing import Annotated
@@ -17,6 +15,7 @@ from sqlalchemy import Connection, text
 from app.core.db import public_connection
 from app.core.errors import ApiError, validation_error
 from app.modules.disclosure.projection_policy import NO_SAFETY_NOTICE, freshness_from_age
+from app.shared.cursor import decode_cursor, encode_cursor
 
 router = APIRouter(prefix="/public", tags=["public map"])
 
@@ -28,19 +27,6 @@ _COLUMNS = """public_id, public_category_code, ST_X(public_location::geometry) A
               ST_Y(public_location::geometry) AS lat, public_precision_m, public_verification,
               public_lifecycle, public_confidence, public_severity, uncertainty_note,
               public_observed_at, generated_at"""
-
-
-def _encode_cursor(observed_at: datetime, public_id: uuid.UUID) -> str:
-    raw = json.dumps({"t": observed_at.isoformat(), "id": str(public_id)}).encode()
-    return base64.urlsafe_b64encode(raw).decode().rstrip("=")
-
-
-def _decode_cursor(cursor: str) -> tuple[datetime, uuid.UUID]:
-    try:
-        data = json.loads(base64.urlsafe_b64decode(cursor + "=" * (-len(cursor) % 4)))
-        return datetime.fromisoformat(data["t"]), uuid.UUID(data["id"])
-    except (ValueError, KeyError, TypeError, json.JSONDecodeError):
-        raise validation_error("cursor", "Invalid pagination cursor.")
 
 
 def parse_bbox(bbox: str) -> tuple[float, float, float, float]:
@@ -120,7 +106,7 @@ def list_public_incidents(
         where.append("public_observed_at <= :to_ts")
         params["to_ts"] = to
     if cursor:
-        params["c_t"], params["c_id"] = _decode_cursor(cursor)
+        params["c_t"], params["c_id"] = decode_cursor(cursor)
         where.append("(public_observed_at, public_id) < (:c_t, :c_id)")
 
     rows = conn.execute(text(f"""
@@ -134,7 +120,7 @@ def list_public_incidents(
     next_cursor = None
     if len(rows) > limit:
         rows = rows[:limit]
-        next_cursor = _encode_cursor(rows[-1].public_observed_at, rows[-1].public_id)
+        next_cursor = encode_cursor(rows[-1].public_observed_at, rows[-1].public_id)
     response.headers["Cache-Control"] = "public, max-age=30"
     return {
         "type": "FeatureCollection",

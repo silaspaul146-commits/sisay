@@ -47,6 +47,13 @@ def handle_report_submitted(conn: Connection, event: OutboxEvent, settings: Sett
                                           "outcome": result.outcome})
 
 
+def handle_report_rematch(conn: Connection, event: OutboxEvent, settings: Settings) -> None:
+    result = process_submitted_report(conn, uuid.UUID(event.payload["report_id"]), settings, rematch=True)
+    if result:
+        log.info("report rematched", extra={"event_id": event.id, "report_id": event.aggregate_id,
+                                            "outcome": result.outcome})
+
+
 def handle_projection_refresh(conn: Connection, event: OutboxEvent, settings: Settings) -> None:
     state = refresh_projection(conn, uuid.UUID(event.payload["incident_id"]), event.payload.get("reason", "event"))
     log.info("projection refreshed", extra={"event_id": event.id, "incident_id": event.aggregate_id,
@@ -59,6 +66,7 @@ def handle_evidence_purge(conn: Connection, event: OutboxEvent, settings: Settin
 
 HANDLERS: dict[str, Handler] = {
     "report.submitted": handle_report_submitted,
+    "report.rematch_requested": handle_report_rematch,
     "projection.refresh": handle_projection_refresh,
     "evidence.purge_requested": handle_evidence_purge,
 }

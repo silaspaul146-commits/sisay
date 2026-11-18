@@ -21,14 +21,15 @@ DATA_TABLES = """
   reporting.report_association_history, reporting.report_match_candidates, reporting.report_match_decisions,
   reporting.report_evidence, reporting.report_access_credentials, reporting.report_submitters, reporting.reports,
   incident.incident_assessments, incident.incident_corrections, incident.incident_relationships,
-  incident.incidents, identity.installations
+  incident.incidents, identity.installations, identity.platform_permissions, identity.users
 """
 
 
 def _reset_caches():
     from app.core.config import get_settings
-    from app.core.db import get_engine, get_public_engine
-    for f in (get_settings, get_engine, get_public_engine):
+    from app.core.auth import get_token_verifier
+    from app.core.db import get_dashboard_engine, get_engine, get_public_engine
+    for f in (get_settings, get_engine, get_public_engine, get_dashboard_engine, get_token_verifier):
         f.cache_clear()
 
 
@@ -98,3 +99,46 @@ def submit(client, category="fire", lat=BASE_LAT, lon=BASE_LON, key=None, header
     h = {"Idempotency-Key": str(key or uuid.uuid4())}
     h.update(headers or {})
     return client.post("/api/v1/reports", json=body, headers=h)
+
+
+# --- Staff sign-in: a test identity provider ----------------------------------------------------
+
+TEST_ISSUER, TEST_AUDIENCE = "https://idp.test/", "crisis-api-test"
+
+
+@pytest.fixture(scope="session")
+def idp_key():
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    return rsa.generate_private_key(public_exponent=65537, key_size=2048)
+
+
+@pytest.fixture
+def staff(client, engine, idp_key):
+    """staff("incident.verify", ...) provisions a user with those permissions and returns
+    request headers carrying a valid provider token for them."""
+    import time
+
+    import jwt
+
+    from app.core.auth import TokenVerifier, get_token_verifier
+    from app.main import app
+
+    app.dependency_overrides[get_token_verifier] = lambda: TokenVerifier(
+        TEST_ISSUER, TEST_AUDIENCE, ["RS256"], lambda _t: idp_key.public_key())
+
+    def make(*permissions: str, subject: str | None = None) -> dict:
+        subject = subject or f"test|{uuid.uuid4()}"
+        with engine.begin() as conn:
+            uid = conn.execute(text("""INSERT INTO identity.users (email, auth_subject, status)
+                                       VALUES (:e, :s, 'active') RETURNING id"""),
+                               {"e": f"{uuid.uuid4().hex[:8]}@example.test", "s": subject}).scalar_one()
+            for p in permissions:
+                conn.execute(text("INSERT INTO identity.platform_permissions (user_id, permission_code) "
+                                  "VALUES (:u, :p)"), {"u": uid, "p": p})
+        now = int(time.time())
+        tok = jwt.encode({"iss": TEST_ISSUER, "aud": TEST_AUDIENCE, "sub": subject, "iat": now, "exp": now + 600},
+                         idp_key, algorithm="RS256")
+        return {"Authorization": f"Bearer {tok}", "X-User-Id": str(uid)}
+
+    yield make
+    app.dependency_overrides.pop(get_token_verifier, None)

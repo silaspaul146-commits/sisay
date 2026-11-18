@@ -31,6 +31,11 @@ def get_public_engine() -> Engine:
     return make_engine(get_settings().effective_public_database_url, 5)
 
 
+@lru_cache
+def get_dashboard_engine() -> Engine:
+    return make_engine(get_settings().effective_dashboard_database_url, 5)
+
+
 def transaction() -> Iterator[Connection]:
     """FastAPI dependency: one transaction per request, committed on success."""
     with get_engine().begin() as conn:

@@ -158,8 +158,15 @@ def _publication_review_approved(conn: Connection, incident_id: uuid.UUID, src) 
     ).first()
     if approved:
         return True
-    # Make sure reviewers see it: open a publication review if none is pending.
-    if public_lifecycle(src.operational_status, src.verification_status) != "removed":
+    rejected = conn.execute(
+        text("""SELECT 1 FROM review.review_items
+                WHERE incident_id = :iid AND item_type = 'publication_review'
+                  AND status = 'resolved' AND resolution = 'rejected' LIMIT 1"""),
+        {"iid": incident_id},
+    ).first()
+    # Make sure reviewers see it: open a publication review if none is pending, unless a reviewer
+    # already refused publication (otherwise every freshness sweep would reopen it).
+    if not rejected and public_lifecycle(src.operational_status, src.verification_status) != "removed":
         conn.execute(
             text("""INSERT INTO review.review_items (id, item_type, incident_id, priority)
                     VALUES (:id, 'publication_review', :iid, 2) ON CONFLICT DO NOTHING"""),

@@ -27,6 +27,17 @@ class Settings(BaseSettings):
     # Defaults to database_url for local development.
     public_database_url: str | None = None
 
+    # Staff (dashboard) routes connect as app_dashboard: no reporter identity, no credentials.
+    # Defaults to database_url for local development.
+    dashboard_database_url: str | None = None
+
+    # Staff sign-in: any OpenID Connect provider (U-1). The API only validates the provider's
+    # access tokens; users and their permissions live in identity.* (python -m app.manage grant).
+    oidc_issuer: str | None = None          # e.g. https://your-tenant.eu.auth0.com/
+    oidc_audience: str | None = None        # the API identifier configured at the provider
+    oidc_jwks_url: str | None = None        # optional; discovered from the issuer when unset
+    oidc_algorithms: list[str] = Field(default_factory=lambda: ["RS256", "ES256"])
+
     # Run the outbox worker as a background thread inside the API process, connected as the
     # worker role. For hosts without background workers (e.g. Render free plan) and testing only:
     # an idle free instance sleeps, and the worker sleeps with it.
@@ -65,7 +76,7 @@ class Settings(BaseSettings):
     # If set, it becomes pepper version 1 and overrides TOKEN_PEPPERS.
     token_pepper: str | None = None
 
-    @field_validator("database_url", "public_database_url", "worker_database_url", mode="before")
+    @field_validator("database_url", "public_database_url", "worker_database_url", "dashboard_database_url", mode="before")
     @classmethod
     def _normalize_url(cls, v):
         return normalize_database_url(v) if isinstance(v, str) else v
@@ -85,6 +96,10 @@ class Settings(BaseSettings):
     @property
     def effective_public_database_url(self) -> str:
         return self.public_database_url or self.database_url
+
+    @property
+    def effective_dashboard_database_url(self) -> str:
+        return self.dashboard_database_url or self.database_url
 
     def check_production_safety(self) -> None:
         if self.run_worker_in_api and not self.worker_database_url:

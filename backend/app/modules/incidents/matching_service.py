@@ -66,7 +66,10 @@ _CANDIDATES_SQL = text("""
 """)
 
 
-def process_submitted_report(conn: Connection, report_id: uuid.UUID, settings: Settings) -> MatchResult | None:
+def process_submitted_report(conn: Connection, report_id: uuid.UUID, settings: Settings,
+                             rematch: bool = False) -> MatchResult | None:
+    """`rematch` is used after a reviewer accepts a quarantined report: its earlier decision was
+    'ineligible', so matching runs again as a new attempt."""
     report = conn.execute(
         text("""
             SELECT r.id, r.category_id, r.intake_status, r.intake_reason, r.incident_id, r.observed_at,
@@ -86,8 +89,10 @@ def process_submitted_report(conn: Connection, report_id: uuid.UUID, settings: S
         return None
 
     # Idempotent: a decision already exists, so an earlier delivery of this event did the work.
-    if conn.execute(text("SELECT 1 FROM reporting.report_match_decisions WHERE report_id = :rid"),
-                    {"rid": report_id}).first():
+    # A rematch only proceeds while every earlier decision was 'ineligible'.
+    done_sql = ("SELECT 1 FROM reporting.report_match_decisions WHERE report_id = :rid"
+                + (" AND outcome <> 'ineligible'" if rematch else ""))
+    if conn.execute(text(done_sql), {"rid": report_id}).first() or (rematch and report.incident_id is not None):
         return None
 
     intake_status = report.intake_status
@@ -160,7 +165,9 @@ def _insert_decision(conn: Connection, report_id: uuid.UUID, decision: Decision,
         text("""
             INSERT INTO reporting.report_match_decisions
               (id, report_id, attempt, outcome, selected_incident_id, created_incident_id, policy_version, explanation)
-            VALUES (:id, :rid, 1, :outcome, :selected, :created, :policy, CAST(:explanation AS jsonb))
+            VALUES (:id, :rid,
+                    (SELECT COALESCE(max(attempt), 0) + 1 FROM reporting.report_match_decisions WHERE report_id = :rid),
+                    :outcome, :selected, :created, :policy, CAST(:explanation AS jsonb))
         """),
         {"id": decision_id, "rid": report_id, "outcome": decision.outcome.value, "selected": selected,
          "created": created, "policy": POLICY_VERSION, "explanation": json.dumps(decision.explanation())},
