@@ -59,3 +59,18 @@ Store the printed URLs in Render (step 3) or a password manager. To replace lost
   least-privileged roles.
 - **Production:** set `APP_ENV=production` only after the go-live checklist (Engineering pack §14).
   It disables `/docs` and refuses development secrets.
+
+## Staff sign-in (OIDC)
+
+Staff routes (`/api/v1/incidents`, `/api/v1/review/...`, `/api/v1/auth/me`) accept access tokens from
+any OpenID Connect provider (Auth0, Keycloak, Clerk, Microsoft Entra, ...). Until these are set they
+answer 503 and nothing else is affected.
+
+1. At the provider, create an **API / resource** whose identifier becomes the token audience, and a
+   login application for the dashboard.
+2. On the API service set `OIDC_ISSUER` (e.g. `https://tenant.eu.auth0.com/`, with the trailing slash
+   exactly as in the provider's tokens) and `OIDC_AUDIENCE`. `OIDC_JWKS_URL` is optional.
+3. Set `DASHBOARD_DATABASE_URL` to the `app_dashboard` URL that `db-roles` printed.
+4. For each staff member, copy their provider user id (`sub`) and run, with the owner URL:
+   `python -m app.manage grant --subject '<sub>' --email person@org reviewer`
+   (`reviewer` = incident.view, assess, verify, merge, report.review). Revoke with `--revoke`.

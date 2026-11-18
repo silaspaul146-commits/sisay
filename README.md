@@ -14,16 +14,16 @@ generalized public projection → public GeoJSON map.
 
 | Area | State |
 |------|-------|
-| Database schema: all 11 schemas, 38 tables, guards, grants, seed data (migrations 0001–0015) | Written, **not yet run against PostGIS** |
+| Database schema: all 11 schemas, 38 tables, guards, grants, seed data (migrations 0001–0015) | Live on Neon (PostgreSQL 18, PostGIS 3.6) |
 | `POST /api/v1/reports` (idempotent, anonymous), `GET /reports/{id}/status` (token) | Done |
 | `GET /api/v1/public/incidents` (bbox or radius, GeoJSON), `/{public_id}`, `/removals` | Done |
 | `GET /api/v1/incident-categories` | Done |
 | Outbox worker: matching (policy `match-2026.11.1`), projection refresh, freshness sweep | Done |
 | Nightly retention: reports redacted after 30 days, reporter links purged after 7 (U-2) | Done |
 | Neon + Render deployment (`render.yaml`, `python -m app.manage`, [docs/DEPLOY.md](docs/DEPLOY.md)) | Ready; waiting for the Neon and Render accounts |
-| Unit tests (matching, disclosure, tokens, idempotency, config, API validation, failure handling) | 53 written; 52 pass on Python 3.11 (the UUIDv7 test needs 3.14), not yet run on 3.14 |
-| Integration tests (DB spec §12.2 and slice acceptance §9.2) | Written, need PostGIS to run |
-| Auth, review dashboard API, evidence upload, alerts, subscriptions, journey checks, organizations, intelligence, Flutter app, Next.js dashboard | Not started (phases 6–11) |
+| Tests: 69 unit + 35 integration (migrations, triggers, spatial SQL, slice, staff API) | All pass in CI on PostGIS 18 / Python 3.14 |
+| Staff API: OIDC sign-in, incidents list/detail/history, verify, assess, associations, merge, review queue | Done; answers 503 until an OIDC provider is configured (docs/DEPLOY.md) |
+| Evidence upload, alerts, subscriptions, journey checks, organizations, intelligence, Flutter app, Next.js dashboard | Not started |
 
 ## Run locally
 

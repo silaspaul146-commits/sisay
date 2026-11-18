@@ -40,6 +40,17 @@ contract wins on client-facing names where Appendix A recommends it.
 | ORM | DB spec suggests GeoAlchemy2 models | SQLAlchemy Core with explicit SQL. The spec's queries are PostGIS-specific and hand-tuned; models add little. |
 | Installations | No registration endpoint in the contract for the slice | `X-Installation-ID` (+ optional `X-Client-Platform`) is upserted on first use. Revisit with push-endpoint registration. |
 
+## Staff API (2026-11-18)
+
+| Topic | Conflict | Decision |
+|-------|----------|----------|
+| Permission names | API contract 16.1 names (`incident.update`, `incident.view_reports`, `incident.review_matches`, `incident.manage_associations`, `incident.view_history`) are not in the DB CHECK list | DB vocabulary wins. `incident.view` covers detail, reports and history; `report.review` covers the review queue, match candidates, associations and quarantine; `incident.assess`, `incident.verify` and `incident.merge` as named. Publication approval needs `incident.verify`. |
+| Sign-in | API contract `/auth/register`, `/auth/login`, `/auth/refresh` | Replaced by the external OIDC provider (U-1). The API validates provider tokens (JWKS, issuer, audience). `GET /auth/me` is kept. |
+| Staff provisioning | Not specified | `python -m app.manage grant --subject <sub> --email <e> reviewer` (owner connection). Unknown subjects are refused; accounts are never auto-created on first sign-in. |
+| Organization reviewers | API contract allows them to verify | Not in this phase: only platform permissions authorize staff routes. Org-scoped access comes with the organizations phase. |
+| Assessment types | Contract lists `geographic_impact` | Not in the DB CHECK; rejected with 422 until the schema adds it. |
+| Not yet built | `POST /incidents` (manual create), `PATCH /incidents` (correction), reviewer notes | Next staff increment. |
+
 ## Product-owner decisions (2026-11-18)
 
 | ID | Decision | Consequence in code |
@@ -52,6 +63,6 @@ contract wins on client-facing names where Appendix A recommends it.
 
 ## Deferred (as the engineering pack §12.1 directs)
 
-Authentication (U-1 open), notifications/alerts, subscriptions, journey checks, organizations,
-humanitarian intelligence, evidence upload, review dashboard API. Their tables exist (migrations
+Notifications/alerts, subscriptions, journey checks, organizations, humanitarian intelligence,
+evidence upload. Their tables exist (migrations
 0010–0012) so the schema is final; their code does not.
