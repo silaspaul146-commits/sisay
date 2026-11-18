@@ -21,3 +21,14 @@ def test_development_pepper_refused_outside_development(monkeypatch):
     monkeypatch.setenv("APP_ENV", "staging")
     with pytest.raises(RuntimeError):
         Settings().check_production_safety()
+
+
+def test_in_api_worker_requires_worker_role_url():
+    import pytest
+
+    from app.core.config import Settings
+    with pytest.raises(RuntimeError, match="WORKER_DATABASE_URL"):
+        Settings(run_worker_in_api=True).check_production_safety()
+    s = Settings(run_worker_in_api=True, worker_database_url="postgres://app_worker:x@h/db")
+    s.check_production_safety()
+    assert s.worker_database_url.startswith("postgresql+psycopg://")

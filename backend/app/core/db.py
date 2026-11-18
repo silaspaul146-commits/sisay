@@ -11,7 +11,7 @@ from sqlalchemy import Connection, Engine, create_engine
 from app.core.config import get_settings
 
 
-def _engine(url: str, pool_size: int) -> Engine:
+def make_engine(url: str, pool_size: int) -> Engine:
     connect_args = {}
     if "-pooler." in url:
         # Neon's pooled endpoint runs PgBouncer in transaction mode: no server-side prepared statements.
@@ -23,12 +23,12 @@ def _engine(url: str, pool_size: int) -> Engine:
 
 @lru_cache
 def get_engine() -> Engine:
-    return _engine(get_settings().database_url, 5)
+    return make_engine(get_settings().database_url, 5)
 
 
 @lru_cache
 def get_public_engine() -> Engine:
-    return _engine(get_settings().effective_public_database_url, 5)
+    return make_engine(get_settings().effective_public_database_url, 5)
 
 
 def transaction() -> Iterator[Connection]:

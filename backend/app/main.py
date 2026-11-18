@@ -1,4 +1,8 @@
 """FastAPI application: modular monolith, API under /api/v1 (Engineering pack 2, API contract 1.2)."""
+import threading
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 from fastapi import APIRouter, FastAPI
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
@@ -12,10 +16,27 @@ from app.modules.disclosure.public_router import router as public_router
 from app.modules.reporting.router import router as reporting_router
 
 
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    """Optionally run the outbox worker in this process (RUN_WORKER_IN_API, see config)."""
+    settings = get_settings()
+    worker = None
+    if settings.run_worker_in_api:
+        from app.core.db import make_engine
+        from app.infrastructure.workers.runner import Worker
+        worker = Worker(settings, engine=make_engine(settings.worker_database_url, 2))
+        threading.Thread(target=worker.run_forever, kwargs={"install_signal_handlers": False},
+                         name="outbox-worker", daemon=True).start()
+    yield
+    if worker:
+        worker.stop()
+
+
 def create_app() -> FastAPI:
     configure_logging()
     settings = get_settings()
     app = FastAPI(
+        lifespan=lifespan,
         title="Crisis Safety and Humanitarian Intelligence Platform API",
         version="1.0.0",
         openapi_url="/api/v1/openapi.json",

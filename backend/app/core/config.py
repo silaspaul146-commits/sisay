@@ -27,6 +27,12 @@ class Settings(BaseSettings):
     # Defaults to database_url for local development.
     public_database_url: str | None = None
 
+    # Run the outbox worker as a background thread inside the API process, connected as the
+    # worker role. For hosts without background workers (e.g. Render free plan) and testing only:
+    # an idle free instance sleeps, and the worker sleeps with it.
+    run_worker_in_api: bool = False
+    worker_database_url: str | None = None
+
     # Anonymous report credentials (DB spec 7.3). Peppers are secrets: supply them via the
     # secret store in any shared environment. Format: {"1": "<random secret>"}.
     token_peppers: dict[int, str] = Field(default_factory=lambda: {1: "dev-only-pepper-change-me"})
@@ -59,7 +65,7 @@ class Settings(BaseSettings):
     # If set, it becomes pepper version 1 and overrides TOKEN_PEPPERS.
     token_pepper: str | None = None
 
-    @field_validator("database_url", "public_database_url", mode="before")
+    @field_validator("database_url", "public_database_url", "worker_database_url", mode="before")
     @classmethod
     def _normalize_url(cls, v):
         return normalize_database_url(v) if isinstance(v, str) else v
@@ -81,6 +87,8 @@ class Settings(BaseSettings):
         return self.public_database_url or self.database_url
 
     def check_production_safety(self) -> None:
+        if self.run_worker_in_api and not self.worker_database_url:
+            raise RuntimeError("RUN_WORKER_IN_API needs WORKER_DATABASE_URL (the app_worker role)")
         if self.app_env in ("staging", "production") and any("dev-only" in p for p in self.token_peppers.values()):
             raise RuntimeError("Set TOKEN_PEPPER (or TOKEN_PEPPERS) to a real secret outside development")
 

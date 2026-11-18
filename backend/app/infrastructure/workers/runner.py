@@ -15,7 +15,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 
 import psycopg
-from sqlalchemy import Connection
+from sqlalchemy import Connection, Engine
 
 from app.core.config import Settings, get_settings, libpq_url
 from app.core.db import get_engine
@@ -65,9 +65,10 @@ HANDLERS: dict[str, Handler] = {
 
 
 class Worker:
-    def __init__(self, settings: Settings | None = None, worker_id: str | None = None):
+    def __init__(self, settings: Settings | None = None, worker_id: str | None = None,
+                 engine: Engine | None = None):
         self.settings = settings or get_settings()
-        self.engine = get_engine()
+        self.engine = engine or get_engine()
         self.worker_id = worker_id or f"{socket.gethostname()}:{os.getpid()}"
         self.stopping = False
         self._last_sweep = 0.0
@@ -122,11 +123,12 @@ class Worker:
                 self._retention_retry_at = now + RETENTION_RETRY_S
                 log.exception("retention run failed; retrying later", extra={"outcome": "retry_scheduled"})
 
-    def run_forever(self) -> None:
-        signal.signal(signal.SIGINT, self._stop)
-        signal.signal(signal.SIGTERM, self._stop)
+    def run_forever(self, install_signal_handlers: bool = True) -> None:
+        if install_signal_handlers:  # only possible in the main thread
+            signal.signal(signal.SIGINT, self.stop)
+            signal.signal(signal.SIGTERM, self.stop)
         # LISTEN needs a session-level connection: use Neon's direct endpoint, never the pooler.
-        dsn = libpq_url(self.settings.database_url).replace("-pooler.", ".")
+        dsn = libpq_url(self.engine.url.render_as_string(hide_password=False)).replace("-pooler.", ".")
         log.info("worker started", extra={"worker_id": self.worker_id})
         while not self.stopping:
             # Reconnect when the LISTEN connection drops (Neon compute restart, network blip).
@@ -153,5 +155,5 @@ class Worker:
                 for _ in listen_conn.notifies(timeout=self.settings.outbox_poll_interval_s, stop_after=1):
                     pass
 
-    def _stop(self, *_):
+    def stop(self, *_):
         self.stopping = True
