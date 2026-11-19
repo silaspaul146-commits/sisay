@@ -8,6 +8,7 @@ import '../api.dart';
 import '../app_state.dart';
 import '../config.dart';
 import '../identity.dart';
+import '../push.dart';
 import '../strings.dart';
 import '../theme.dart';
 import '../widgets.dart';
@@ -67,13 +68,19 @@ class _PlacesScreenState extends State<PlacesScreen> {
       useSafeArea: true,
       builder: (_) => const _AddPlaceSheet(),
     );
-    if (added == true) _load();
+    if (added == true) _added();
   }
 
   Future<void> _addRoute() async {
     final added =
         await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => const RouteEditor(), fullscreenDialog: true));
-    if (added == true) _load();
+    if (added == true) _added();
+  }
+
+  /// Right after someone saves something to watch is when asking for notifications makes sense.
+  void _added() {
+    _load();
+    push.start(prompt: true);
   }
 
   Future<void> _toggle(String targetKey, String id, bool on) async {
@@ -137,6 +144,14 @@ class _PlacesScreenState extends State<PlacesScreen> {
                 ),
                 if (_error != null)
                   Padding(padding: const EdgeInsets.only(top: 12), child: Text(_error!, style: T.label.copyWith(color: C.ember))),
+                ListenableBuilder(
+                  listenable: push,
+                  builder: (context, _) {
+                    final hasAny = (_places?.isNotEmpty ?? false) || (_routes?.isNotEmpty ?? false);
+                    if (!push.available || push.allowed != false || !hasAny) return const SizedBox.shrink();
+                    return Padding(padding: const EdgeInsets.only(top: 12), child: _NotifyOff(lang: l));
+                  },
+                ),
                 const SizedBox(height: 14),
                 if (items == null && _error == null)
                   const Padding(padding: EdgeInsets.all(32), child: Center(child: CircularProgressIndicator()))
@@ -460,5 +475,28 @@ class SettingsSheet extends StatelessWidget {
             ]),
           ));
         },
+      );
+}
+
+/// Shown when the phone blocks Sisay's notifications: alerts then only show inside the app.
+class _NotifyOff extends StatelessWidget {
+  final String lang;
+  const _NotifyOff({required this.lang});
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        decoration: BoxDecoration(color: C.amberTint, borderRadius: BorderRadius.circular(16)),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Padding(
+              padding: EdgeInsets.only(top: 1), child: Icon(Icons.notifications_off_outlined, size: 20, color: C.amberText)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(tr(lang, 'notif_off_title'), style: T.label.copyWith(color: C.amberText)),
+              const SizedBox(height: 2),
+              Text(tr(lang, 'notif_off_body'), style: T.caption.copyWith(color: C.amberText)),
+            ]),
+          ),
+        ]),
       );
 }

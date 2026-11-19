@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import 'app_state.dart';
 import 'identity.dart';
+import 'push.dart';
 import 'reports_store.dart';
 import 'screens/shell.dart';
 import 'screens/welcome.dart';
@@ -20,6 +21,7 @@ Future<void> main() async {
   await identity.load();
   await reportsStore.open(); // the offline queue must be ready before anyone can report
   identity.ensureRegistered(); // best effort; retried by the queue's sync
+  await push.init(); // no-op when this build has no Firebase config
   runApp(const SisayApp());
 }
 
@@ -32,6 +34,8 @@ class SisayApp extends StatelessWidget {
       listenable: appState,
       builder: (context, _) => MaterialApp(
         title: 'Sisay',
+        navigatorKey: push.navigatorKey,
+        scaffoldMessengerKey: push.messengerKey,
         debugShowCheckedModeBanner: false,
         theme: sisayTheme(),
         home: appState.onboarded ? const Shell() : const WelcomeScreen(),

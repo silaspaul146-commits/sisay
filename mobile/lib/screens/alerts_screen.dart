@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../api.dart';
 import '../app_state.dart';
 import '../identity.dart';
+import '../push.dart';
 import '../strings.dart';
 import '../theme.dart';
 import '../widgets.dart';
@@ -20,7 +21,14 @@ class _AlertsScreenState extends State<AlertsScreen> {
   @override
   void initState() {
     super.initState();
+    push.received.addListener(_load);
     _load();
+  }
+
+  @override
+  void dispose() {
+    push.received.removeListener(_load);
+    super.dispose();
   }
 
   Future<void> _load() async {

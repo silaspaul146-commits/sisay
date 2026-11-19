@@ -62,7 +62,8 @@ const _en = <String, String>{
   // places
   'places_title': 'Saved', 'places_sub': 'Get warned about reports near the places and roads that matter to you.',
   'tab_places': 'Places', 'tab_routes': 'Routes',
-  'no_places': 'No places yet', 'no_places_body': 'Add home, work or school. We warn you when something is reported nearby.',
+  'no_places': 'No places yet',
+  'no_places_body': 'Add home, work or school. We warn you when something is reported nearby.',
   'no_routes': 'No routes yet',
   'no_routes_body': 'Draw a road you take often, like Bambili to Bamenda. We warn you about reports along it.',
   'add_place': 'Add a place', 'add_route': 'Add a route',
@@ -80,10 +81,15 @@ const _en = <String, String>{
   'route_need_points': 'Tap at least two points', 'save_route': 'Save route', 'undo': 'Undo', 'clear': 'Clear',
   // settings
   'settings': 'Settings', 'language': 'Language',
+  // push
+  'new_alert': 'New alert near you', 'view': 'View',
+  'notif_off_title': 'Notifications are off',
+  'notif_off_body': "You'll only see alerts when you open Sisay. Turn on notifications for Sisay in your phone's settings.",
   'privacy_short': "Sisay never asks for your name or number. Reports can't be traced back to you on the map.",
   // mine
   'mine_title': 'My reports', 'mine_sub': 'Only this phone can see this list.',
-  'no_mine_title': 'Nothing sent yet', 'no_mine': "Reports you send from this phone show up here, even when you're offline.",
+  'no_mine_title': 'Nothing sent yet',
+  'no_mine': "Reports you send from this phone show up here, even when you're offline.",
   'waiting_to_send': 'Some reports are waiting for internet. They send by themselves.',
   'st_pending': 'Waiting', 'st_sending': 'Sending', 'st_sent': 'Sent', 'st_attention': 'Needs attention',
   'error_generic': 'Something went wrong. Try again.',
@@ -213,6 +219,11 @@ const _fr = <String, String>{
   'undo': 'Annuler',
   'clear': 'Effacer',
   'settings': 'Réglages',
+  'new_alert': 'Nouvelle alerte près de vous',
+  'view': 'Voir',
+  'notif_off_title': 'Notifications désactivées',
+  'notif_off_body':
+      "Vous ne verrez les alertes qu'en ouvrant Sisay. Activez les notifications de Sisay dans les réglages du téléphone.",
   'language': 'Langue',
   'privacy_short':
       'Sisay ne demande jamais votre nom ni votre numéro. Sur la carte, un signalement ne remonte jamais jusqu\'à vous.',

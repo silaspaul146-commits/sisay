@@ -6,6 +6,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -13,6 +14,7 @@ import 'package:sisay/api.dart';
 import 'package:sisay/app_state.dart';
 import 'package:sisay/config.dart';
 import 'package:sisay/identity.dart';
+import 'package:sisay/push.dart';
 import 'package:sisay/reports_store.dart';
 import 'package:sisay/screens/alerts_screen.dart';
 import 'package:sisay/screens/incident_screen.dart';
@@ -255,4 +257,20 @@ void main() {
       skip: skip);
   testWidgets('13 welcome fr', (t) => shot(t, '13_welcome_fr', const WelcomeScreen(), lang: 'fr'), skip: skip);
   testWidgets('14 report empty', (t) => shot(t, '14_report_new', const ReportScreen()), skip: skip);
+  testWidgets('15 live alert', (t) async {
+    push.latest = const RemoteMessage(
+        messageId: 'm1',
+        notification: RemoteNotification(
+            title: 'Shooting reported on Bambili → Bamenda', body: 'One person reported this. It may be wrong or already over.'),
+        data: {'alert_id': 'al1'});
+    await shot(t, '15_live_alert', const Shell());
+    push.latest = null;
+  }, skip: skip);
+  testWidgets('16 notifications off', (t) async {
+    push.available = true;
+    push.allowed = false;
+    await shot(t, '16_notif_off', const Shell(initialTab: 2));
+    push.available = false;
+    push.allowed = null;
+  }, skip: skip);
 }

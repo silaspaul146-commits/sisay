@@ -9,6 +9,7 @@ import '../api.dart';
 import '../app_state.dart';
 import '../config.dart';
 import '../identity.dart';
+import '../push.dart';
 import '../strings.dart';
 import '../theme.dart';
 import '../widgets.dart';
@@ -55,12 +56,14 @@ class _MapScreenState extends State<MapScreen> {
   @override
   void initState() {
     super.initState();
+    push.received.addListener(_loadAlert);
     _locate(move: true);
     _loadAlert();
   }
 
   @override
   void dispose() {
+    push.received.removeListener(_loadAlert);
     _debounce?.cancel();
     super.dispose();
   }

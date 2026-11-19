@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="alert_channel_name">Safety alerts</string>
+    <string name="alert_channel_description">Reports near your saved places and routes</string>
+</resources>

@@ -5,6 +5,12 @@ plugins {
     id "dev.flutter.flutter-gradle-plugin"
 }
 
+// Push notifications switch on only when the Firebase config file is present, so the app still
+// builds without it (alerts then show inside the app only). The file stays out of git.
+if (file("google-services.json").exists()) {
+    apply plugin: "com.google.gms.google-services"
+}
+
 android {
     namespace = "org.sisay.sisay"
     compileSdk = 36
