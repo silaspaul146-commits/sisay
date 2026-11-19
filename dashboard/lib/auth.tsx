@@ -41,13 +41,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
       client.current = auth0;
       const params = new URLSearchParams(window.location.search);
+      if (params.has("error")) {
+        // Auth0 sent us back with an error (e.g. the app is not allowed to call the API). Show it;
+        // redirecting again would just loop.
+        const message = params.get("error_description") || params.get("error") || "Sign-in was refused.";
+        window.history.replaceState({}, "", "/");
+        if (!cancelled) setState({ status: "error", message });
+        return;
+      }
       if (params.has("code") && params.has("state")) {
         const { appState } = await auth0.handleRedirectCallback<{ returnTo?: string }>();
         window.history.replaceState({}, "", appState?.returnTo ?? "/");
       } else {
         try {
           await auth0.getTokenSilently();
-        } catch {
+        } catch (err) {
+          const code = (err as { error?: string })?.error;
+          // Only "please sign in" style errors mean we should go to the Auth0 page.
+          if (code && !["login_required", "consent_required", "interaction_required", "missing_refresh_token"].includes(code)) {
+            if (!cancelled) setState({ status: "error", message: (err as Error).message || code });
+            return;
+          }
           await auth0.loginWithRedirect({ appState: { returnTo: window.location.pathname + window.location.search } });
           return;
         }

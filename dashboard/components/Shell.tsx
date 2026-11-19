@@ -45,7 +45,11 @@ export function Shell({ children }: { children: React.ReactNode }) {
           <>
             <h1>Sign-in didn&apos;t work</h1>
             <p>{state.message}</p>
-            <button className="btn btn-secondary" onClick={() => window.location.reload()}>Try again</button>
+            {/not authorized to access resource server/i.test(state.message) ? (
+              <p className="muted small">An administrator needs to allow this dashboard to use the Sisay API in Auth0
+                (APIs → Sisay API → Application Access → Sisay Review → User access: Authorized).</p>
+            ) : null}
+            <button className="btn btn-secondary" onClick={() => window.location.assign("/")}>Try again</button>
           </>
         )}
       </main>
