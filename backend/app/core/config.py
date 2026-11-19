@@ -44,6 +44,13 @@ class Settings(BaseSettings):
     run_worker_in_api: bool = False
     worker_database_url: str | None = None
 
+    # Push notifications (Firebase Cloud Messaging HTTP v1). The service-account JSON from
+    # Firebase console -> Project settings -> Service accounts -> Generate new private key, pasted
+    # whole into this secret. Unset: alerts still reach the in-app list; pushes stay queued.
+    fcm_service_account: str | None = None
+    push_dispatch_batch: int = 100
+    push_max_attempts: int = 6
+
     # Browser origins allowed to call the API (the staff dashboard), comma-separated, exact match,
     # e.g. "https://sisay-review.onrender.com,http://localhost:3000". Empty: no cross-origin access.
     cors_origins: str = ""

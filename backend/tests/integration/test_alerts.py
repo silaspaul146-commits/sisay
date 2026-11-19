@@ -269,3 +269,76 @@ def test_fan_out_is_idempotent(client, engine, as_roles, drain_as_worker):
         aid, vid = conn.execute(text("SELECT alert_id, id FROM alerting.alert_versions")).one()
         assert fan_out(conn, uuid.UUID(str(aid)), uuid.UUID(str(vid)), True) == (0, 0)
     assert len(feed(client, h)) == 1
+
+
+# --- Push dispatch ---------------------------------------------------------------------------------
+
+class FakeSender:
+    def __init__(self, outcome="accepted"):
+        self.outcome, self.sent = outcome, []
+
+    def send(self, m):
+        from app.infrastructure.push.fcm import SendResult
+        self.sent.append(m)
+        return SendResult(self.outcome, message_id="projects/x/messages/1" if self.outcome == "accepted" else None,
+                          error=None if self.outcome == "accepted" else "simulated")
+
+
+def _push_setup(client):
+    h = device(client)
+    client.post("/api/v1/devices/push-endpoints", headers=h, json={"token": "fcm-" + uuid.uuid4().hex * 2})
+    save_place(client, h)
+    submit(client, category="shooting")
+    return h
+
+
+def test_push_is_sent_once_and_recorded(client, engine, as_roles, drain_as_worker):
+    from app.modules.alerting.dispatch import dispatch_batch
+    _push_setup(client)
+    drain_as_worker()
+    worker = _role_engine("app_worker")
+    fake = FakeSender()
+    assert dispatch_batch(worker, fake)["accepted"] == 1
+    assert dispatch_batch(worker, fake) == {}  # nothing left: never sent twice
+    m = fake.sent[0]
+    assert m.title == "Shooting reported nearby. Not confirmed yet." and "Unconfirmed" in m.body
+    assert m.collapse_key.startswith("alert-") and m.high_priority is False
+    assert set(m.data) == {"alert_id", "version", "status", "category"}  # no location in the payload
+    with engine.connect() as conn:
+        d = conn.execute(text("SELECT delivery_status, provider_message_id, attempts FROM alerting.alert_deliveries")).one()
+        assert d.delivery_status == "provider_accepted" and d.provider_message_id and d.attempts == 1
+        assert conn.execute(text("SELECT last_success_at IS NOT NULL FROM identity.push_endpoints")).scalar()
+    worker.dispose()
+
+
+def test_bad_tokens_are_retired_and_failures_retry(client, engine, as_roles, drain_as_worker):
+    from app.modules.alerting.dispatch import dispatch_batch
+    _push_setup(client)
+    drain_as_worker()
+    worker = _role_engine("app_worker")
+    assert dispatch_batch(worker, FakeSender("retry"))["retry"] == 1
+    with engine.connect() as conn:
+        d = conn.execute(text("SELECT delivery_status, next_attempt_at > now() AS later FROM alerting.alert_deliveries")).one()
+        assert d.delivery_status == "queued" and d.later
+    with engine.begin() as conn:
+        conn.execute(text("UPDATE alerting.alert_deliveries SET next_attempt_at = now()"))
+    assert dispatch_batch(worker, FakeSender("invalid_token"))["invalid_token"] == 1
+    with engine.connect() as conn:
+        assert conn.execute(text("SELECT status FROM identity.push_endpoints")).scalar() == "invalid"
+        assert conn.execute(text("SELECT delivery_status FROM alerting.alert_deliveries")).scalar() == "provider_rejected"
+    worker.dispose()
+
+
+def test_an_older_update_is_not_sent_after_a_newer_one(client, engine, as_roles, drain_as_worker, staff):
+    from app.modules.alerting.dispatch import dispatch_batch
+    _push_setup(client)
+    drain_as_worker()
+    client.post(f"/api/v1/incidents/{incident_id(engine)}/verify", headers=staff(*REVIEWER),
+                json={"decision": "rejected", "reason": "Not real"})
+    drain_as_worker()  # version 2 (withdrawn) queued while version 1 is still queued
+    worker = _role_engine("app_worker")
+    fake = FakeSender()
+    counts = dispatch_batch(worker, fake)
+    assert counts == {"accepted": 1, "cancelled": 1}
+    assert [m.title for m in fake.sent] == ["Withdrawn: the earlier warning about shooting was not accurate."]
+    worker.dispose()

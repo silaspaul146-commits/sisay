@@ -27,6 +27,7 @@ from app.infrastructure.outbox.outbox import (
     enqueue_unless_pending,
     release_for_retry,
 )
+from app.modules.alerting.dispatch import dispatch_batch
 from app.modules.alerting.service import enqueue_expiry_sweep, evaluate_incident, fan_out
 from app.modules.disclosure.projection_service import enqueue_freshness_sweep, refresh_projection
 from app.modules.incidents.matching_service import process_submitted_report
@@ -103,6 +104,13 @@ class Worker:
         self._last_housekeeping = 0.0
         self._last_retention_date = None
         self._retention_retry_at = 0.0
+        self.push_sender = None
+        if self.settings.fcm_service_account:
+            from app.infrastructure.push.fcm import FcmSender
+            try:
+                self.push_sender = FcmSender(self.settings.fcm_service_account)
+            except (ValueError, KeyError):
+                log.error("FCM_SERVICE_ACCOUNT is not a valid service-account JSON; push disabled")
 
     def process_batch(self) -> int:
         with self.engine.begin() as conn:
@@ -127,6 +135,14 @@ class Worker:
             level = logging.ERROR if status == "dead" else logging.WARNING
             log.log(level, "outbox event failed", exc_info=status == "dead",
                     extra={"event_id": event.id, "event_type": event.event_type, "outcome": status})
+
+    def dispatch_push(self) -> int:
+        """Send queued push notifications. Without FCM configured they simply stay queued."""
+        if self.push_sender is None:
+            return 0
+        counts = dispatch_batch(self.engine, self.push_sender, self.settings.push_dispatch_batch,
+                                self.settings.push_max_attempts)
+        return sum(counts.values())
 
     def run_periodic(self) -> None:
         now = time.monotonic()
@@ -175,6 +191,7 @@ class Worker:
         while not self.stopping:
             try:
                 processed = self.process_batch()
+                processed += self.dispatch_push()
                 self.run_periodic()
             except Exception:  # database blip: back off and keep running
                 log.exception("worker loop error")
