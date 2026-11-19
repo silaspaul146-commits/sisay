@@ -1,6 +1,7 @@
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'api.dart';
+import 'config.dart';
 
 /// This phone's anonymous identity: an installation id plus a secret token issued by the server
 /// (POST /installations). No name, no phone number. The token lives in Android's encrypted storage
@@ -21,7 +22,7 @@ class Identity {
   Future<bool> ensureRegistered() async {
     if (ready) return true;
     try {
-      final r = await api.send('POST', '/installations', body: {'platform': 'android', 'app_version': '0.2.0'});
+      final r = await api.send('POST', '/installations', body: {'platform': 'android', 'app_version': appVersion});
       installationId = r['installation_id'] as String;
       token = r['installation_token'] as String;
       await _store.write(key: 'installation_id', value: installationId);

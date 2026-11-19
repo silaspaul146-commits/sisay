@@ -10,7 +10,7 @@ const tileUrl =
     String.fromEnvironment('TILE_URL', defaultValue: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png');
 const tileAttribution = '© OpenStreetMap contributors © CARTO';
 const appPackage = 'org.sisay.app';
-const appVersion = '0.2.0';
+const appVersion = '0.2.1';
 
 /// Where the map opens when location is off: Bamenda.
 const defaultLat = 5.9631;
