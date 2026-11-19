@@ -24,8 +24,10 @@ from app.infrastructure.outbox.outbox import (
     claim,
     complete,
     delete_processed_older_than,
+    enqueue_unless_pending,
     release_for_retry,
 )
+from app.modules.alerting.service import enqueue_expiry_sweep, evaluate_incident, fan_out
 from app.modules.disclosure.projection_service import enqueue_freshness_sweep, refresh_projection
 from app.modules.incidents.matching_service import process_submitted_report
 from app.modules.retention.service import purge_report_evidence, run_retention
@@ -58,6 +60,22 @@ def handle_projection_refresh(conn: Connection, event: OutboxEvent, settings: Se
     state = refresh_projection(conn, uuid.UUID(event.payload["incident_id"]), event.payload.get("reason", "event"))
     log.info("projection refreshed", extra={"event_id": event.id, "incident_id": event.aggregate_id,
                                             "outcome": state})
+    # Every incident change passes through here, so this is the one place that asks the alert
+    # engine to look again. A separate event: alert failures retry without redoing the projection.
+    incident_id = uuid.UUID(event.payload["incident_id"])
+    enqueue_unless_pending(conn, "incident", incident_id, "alert.evaluate", {"incident_id": str(incident_id)})
+
+
+def handle_alert_evaluate(conn: Connection, event: OutboxEvent, settings: Settings) -> None:
+    outcome = evaluate_incident(conn, uuid.UUID(event.payload["incident_id"]))
+    log.info("alert evaluated", extra={"event_id": event.id, "incident_id": event.aggregate_id, "outcome": outcome})
+
+
+def handle_alert_version_published(conn: Connection, event: OutboxEvent, settings: Settings) -> None:
+    added, queued = fan_out(conn, uuid.UUID(event.payload["alert_id"]), uuid.UUID(event.payload["alert_version_id"]),
+                            bool(event.payload.get("notify", True)))
+    log.info("alert fan-out", extra={"event_id": event.id, "alert_id": event.aggregate_id,
+                                     "outcome": f"inbox={added} push={queued}"})
 
 
 def handle_evidence_purge(conn: Connection, event: OutboxEvent, settings: Settings) -> None:
@@ -69,6 +87,8 @@ HANDLERS: dict[str, Handler] = {
     "report.rematch_requested": handle_report_rematch,
     "projection.refresh": handle_projection_refresh,
     "evidence.purge_requested": handle_evidence_purge,
+    "alert.evaluate": handle_alert_evaluate,
+    "alert.version_published": handle_alert_version_published,
 }
 
 
@@ -113,6 +133,7 @@ class Worker:
         if now - self._last_sweep >= self.settings.projection_freshness_interval_s:
             with self.engine.begin() as conn:
                 queued = enqueue_freshness_sweep(conn)
+                queued += enqueue_expiry_sweep(conn)
             self._last_sweep = now
             log.info("freshness sweep", extra={"outcome": queued})
         if now - self._last_housekeeping >= 3600:

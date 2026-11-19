@@ -53,6 +53,20 @@ contract wins on client-facing names where Appendix A recommends it.
 | Unlinking a report | Contract inventory: `POST /reports/{id}/unassociate` | Built as listed (`report.review`, reason required). Writes `review_unassign` history; the report stays and can be linked again. The response gives the incident's remaining report count so the dashboard can suggest closing an empty incident. |
 | Not yet built | `POST /incidents` (manual create), reviewer notes, incident split | Next staff increment. |
 
+## Alerts (2026-11-19)
+
+| Topic | Conflict / gap | Decision |
+|-------|----------------|----------|
+| Who subscribes | PRD open question: account vs guest | **Guest by default.** The app registers once (`POST /installations`) and receives a secret `ins_` token, stored as an HMAC like report tokens. Personal routes need `X-Installation-Token`; another installation's ids answer 404. A raw installation id is never enough to read someone's saved places. |
+| Distribution levels | PRD levels 1–3 vs DB `internal`/`subscribers`/`priority` | `subscribers` = Level 1 (one eligible report is enough, clearly unconfirmed); `priority` = Level 2 (verified **and** high or critical); `internal` = held (protected category awaiting publication approval). No Level 3 area broadcast: phones are never tracked. Report counts never widen an alert on their own. |
+| Unknown severity | DB spec A-7: unknown never passes `min_severity` | New, unrated incidents use the category's `default_severity` (Shooting = high) so the first warning is not blocked. A reviewer's assessment replaces it. |
+| Material changes | When to notify again | New version and push only on a level change, a change of wording (verified, disputed), withdrawal (rejected) or "over" (resolved/closed). More reports about the same event: no new version. Merges withdraw quietly (the survivor carries the warning). Expiry is silent. |
+| Old observations | Offline reports synced late | No new alert if the latest observation is older than the category window (clamped 2–72 h). |
+| Protected categories | Alerts vs publication review | Held until the publication review is approved (the same gate as the public map). The public delay itself does not delay alerts; the category's `min_alert_radius_m` floor still blunts the location oracle (F-15). |
+| Alert list in the app | Deliveries need a push endpoint | New `alerting.alert_inbox` (one row per subscriber per version) feeds `GET /alerts`, so the list works without push or when push fails. `alert_deliveries` stays the per-device push record. |
+| What citizens see | Citizen role must not read `incident.*` | Each version stores a snapshot (category, verification, effective severity, status, location snapped to the public grid). |
+| Push sending | FCM | Deliveries are queued now; sending through Firebase is the next increment. |
+
 ## Product-owner decisions (2026-11-18)
 
 | ID | Decision | Consequence in code |

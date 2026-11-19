@@ -13,9 +13,11 @@ from app.core.db import get_engine
 from app.core.errors import install_error_handlers
 from app.core.logging import configure_logging
 from app.modules.administration.router import router as reference_router
+from app.modules.alerting.router import router as alerting_router
 from app.modules.disclosure.public_router import router as public_router
 from app.modules.incidents.staff_router import router as staff_router
 from app.modules.reporting.router import router as reporting_router
+from app.modules.subscriptions.router import router as subscriptions_router
 
 
 @asynccontextmanager
@@ -63,6 +65,8 @@ def create_app() -> FastAPI:
     api.include_router(reporting_router)
     api.include_router(public_router)
     api.include_router(staff_router)
+    api.include_router(subscriptions_router)
+    api.include_router(alerting_router)
     app.include_router(api)
 
     @app.get("/health", tags=["operations"], include_in_schema=False)

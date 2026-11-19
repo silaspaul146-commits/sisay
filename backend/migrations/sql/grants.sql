@@ -30,6 +30,20 @@ BEGIN
   GRANT SELECT ON reporting.report_match_decisions, reporting.report_association_history TO app_citizen;
   GRANT SELECT ON disclosure.public_incident_projections, disclosure.public_incidents_v TO app_citizen;
   GRANT INSERT ON ops.audit_logs, ops.outbox_events TO app_citizen;
+  -- Saved places, routes and subscriptions of the calling installation (ownership is enforced
+  -- in the service by the installation credential; see app/modules/subscriptions).
+  GRANT USAGE ON SCHEMA subscription TO app_citizen;
+  GRANT SELECT, INSERT ON subscription.subscriber_principals TO app_citizen;
+  GRANT SELECT, INSERT, UPDATE, DELETE ON subscription.saved_locations, subscription.saved_routes,
+    subscription.alert_subscriptions, subscription.alert_subscription_categories TO app_citizen;
+  -- Since 0017: device credentials, push registration, alert inbox and alert snapshots.
+  IF to_regclass('alerting.alert_inbox') IS NOT NULL THEN
+    GRANT USAGE ON SCHEMA alerting TO app_citizen;
+    GRANT SELECT ON alerting.alerts, alerting.alert_versions TO app_citizen;
+    GRANT SELECT, UPDATE (acknowledged_at) ON alerting.alert_inbox TO app_citizen;
+    GRANT UPDATE (token_hash, token_pepper_version, status) ON identity.installations TO app_citizen;
+    GRANT EXECUTE ON FUNCTION identity.register_push_endpoint(uuid, text, text) TO app_citizen;
+  END IF;
 
   -- app_worker: broadest DML, then narrowed.
   GRANT USAGE ON SCHEMA ref, identity, org, ops, incident, reporting, review, disclosure,

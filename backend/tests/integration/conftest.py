@@ -16,6 +16,10 @@ BACKEND = Path(__file__).resolve().parents[2]
 TEST_URL = os.environ.get("TEST_DATABASE_URL")
 
 DATA_TABLES = """
+  alerting.alert_inbox, alerting.alert_deliveries, alerting.alert_distribution_decisions,
+  alerting.alert_versions, alerting.alerts, subscription.alert_subscription_categories,
+  subscription.alert_subscriptions, subscription.saved_locations, subscription.saved_routes,
+  subscription.subscriber_principals, identity.push_endpoints,
   ops.outbox_events, ops.audit_logs, review.review_notes, review.review_items,
   disclosure.public_incident_projection_history, disclosure.public_incident_projections,
   reporting.report_association_history, reporting.report_match_candidates, reporting.report_match_decisions,
