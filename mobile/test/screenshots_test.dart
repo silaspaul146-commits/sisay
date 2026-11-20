@@ -22,6 +22,7 @@ import 'package:sisay/screens/map_screen.dart';
 import 'package:sisay/screens/places_screen.dart';
 import 'package:sisay/screens/report_screen.dart';
 import 'package:sisay/screens/route_editor.dart';
+import 'package:sisay/screens/search_screen.dart';
 import 'package:sisay/screens/sent_screen.dart';
 import 'package:sisay/screens/shell.dart';
 import 'package:sisay/screens/welcome.dart';
@@ -96,6 +97,15 @@ class FakeApi extends Api {
     if (path.startsWith('/public/incidents/')) return _features.firstWhere((f) => path.endsWith('/${f['id']}'));
     if (path == '/alerts') return {'items': empty ? [] : _alerts};
     if (path.startsWith('/alerts/')) return _alerts.first;
+    if (path == '/public/place-search') {
+      return {
+        'items': [
+          {'name': 'Nkwen', 'detail': 'Bamenda, Mezam, Northwest', 'latitude': 5.988, 'longitude': 10.184, 'kind': 'neighbourhood'},
+          {'name': 'Bambili', 'detail': 'Tubah, Mezam, Northwest', 'latitude': 6.004, 'longitude': 10.257, 'kind': 'town'},
+          {'name': 'Commercial Avenue', 'detail': 'Bamenda, Northwest', 'latitude': 5.96, 'longitude': 10.15, 'kind': 'road'},
+        ]
+      };
+    }
     if (path == '/saved-locations') {
       return {
         'items': empty
@@ -273,4 +283,14 @@ void main() {
     push.available = false;
     push.allowed = null;
   }, skip: skip);
+  testWidgets(
+      '17 search',
+      (t) => shot(t, '17_search', const SearchScreen(), act: (t) async {
+            await t.enterText(find.byType(TextField), 'Bam');
+            await t.testTextInput.receiveAction(TextInputAction.search);
+            for (var i = 0; i < 6; i++) {
+              await t.pump(const Duration(milliseconds: 200));
+            }
+          }),
+      skip: skip);
 }

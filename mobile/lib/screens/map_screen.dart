@@ -15,6 +15,7 @@ import '../theme.dart';
 import '../widgets.dart';
 import 'alerts_screen.dart';
 import 'incident_screen.dart';
+import 'search_screen.dart';
 
 class PublicIncident {
   final String id, category;
@@ -92,6 +93,21 @@ class _MapScreenState extends State<MapScreen> {
       final active = (r['items'] as List).cast<Map<String, dynamic>>().where((a) => a['status'] == 'active').toList();
       if (mounted) setState(() => _alert = active.isEmpty ? null : active.first);
     } on ApiException {/* keep last */}
+  }
+
+  Future<void> _search() async {
+    final p = await Navigator.of(context).push<FoundPlace>(MaterialPageRoute(builder: (_) => const SearchScreen()));
+    if (p == null || !mounted) return;
+    final b = p.bbox;
+    // Fit towns and areas; small things (a street, a tiny hamlet) get a sensible street-level zoom.
+    if (b != null && (b[2] - b[0]) > 0.004 && (b[2] - b[0]) < 1.5) {
+      _map.fitCamera(CameraFit.bounds(
+          bounds: LatLngBounds(LatLng(b[1], b[0]), LatLng(b[3], b[2])),
+          padding: const EdgeInsets.fromLTRB(40, 140, 40, 260),
+          maxZoom: 16));
+    } else {
+      _map.move(LatLng(p.lat, p.lon), 15);
+    }
   }
 
   void _onMoved() {
@@ -230,6 +246,8 @@ class _MapScreenState extends State<MapScreen> {
                         : '${tr(l, 'in_view')}: $active',
               ),
               const Spacer(),
+              MapButton(icon: Icons.search_rounded, tooltip: tr(l, 'search'), onTap: _search),
+              const SizedBox(width: 10),
               MapButton(icon: Icons.layers_outlined, tooltip: tr(l, 'legend_title'), onTap: _legend),
             ]),
             const SizedBox(height: 10),
@@ -307,7 +325,9 @@ class _MapScreenState extends State<MapScreen> {
                             Expanded(child: Text(tr(l, 'unconfirmed_note'), style: T.caption)),
                           ]),
                           const SizedBox(height: 6),
-                          Text(tileAttribution, style: T.caption.copyWith(fontSize: 11)),
+                          ValueListenableBuilder(
+                              valueListenable: mapConfig,
+                              builder: (_, c, __) => Text(c.attribution, style: T.caption.copyWith(fontSize: 11))),
                         ]),
                       ),
                     ),

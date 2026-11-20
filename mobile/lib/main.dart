@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'app_state.dart';
+import 'config.dart';
 import 'identity.dart';
 import 'push.dart';
 import 'reports_store.dart';
@@ -18,6 +19,7 @@ Future<void> main() async {
     systemNavigationBarIconBrightness: Brightness.dark,
   ));
   await appState.load();
+  await loadMapConfig(); // saved map settings now, fresh ones from the server in the background
   await identity.load();
   await reportsStore.open(); // the offline queue must be ready before anyone can report
   identity.ensureRegistered(); // best effort; retried by the queue's sync
