@@ -59,6 +59,20 @@ class Settings(BaseSettings):
     def cors_origin_list(self) -> list[str]:
         return [o.strip().rstrip("/") for o in self.cors_origins.split(",") if o.strip()]
 
+    # Place search (map "area search"), proxied so phones never contact the provider directly.
+    # The provider's usage policy asks for an identifying User-Agent.
+    geocoder_url: str = "https://nominatim.openstreetmap.org/search"
+    geocoder_user_agent: str = "Sisay/0.2 (crisis-reporting app; https://sisay.onrender.com)"
+
+    # Map tiles the app draws (GET /public/app-config). Change these to swap the basemap provider
+    # without an app release. Templates use {z}/{x}/{y}, optional {s}; https only.
+    map_tile_url: str = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+    map_fallback_url: str = "https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png"
+    map_subdomains: str = "a,b,c"
+    map_attribution: str = "© OpenStreetMap contributors"
+    map_max_zoom: int = 19
+    map_saturation: float = 0.55
+
     # Anonymous report credentials (DB spec 7.3). Peppers are secrets: supply them via the
     # secret store in any shared environment. Format: {"1": "<random secret>"}.
     token_peppers: dict[int, str] = Field(default_factory=lambda: {1: "dev-only-pepper-change-me"})

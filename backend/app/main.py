@@ -16,6 +16,8 @@ from app.modules.administration.router import router as reference_router
 from app.modules.alerting.router import router as alerting_router
 from app.modules.disclosure.public_router import router as public_router
 from app.modules.incidents.staff_router import router as staff_router
+from app.modules.places.app_config import router as app_config_router
+from app.modules.places.router import router as places_router
 from app.modules.reporting.router import router as reporting_router
 from app.modules.subscriptions.router import router as subscriptions_router
 
@@ -64,6 +66,8 @@ def create_app() -> FastAPI:
     api.include_router(reference_router)
     api.include_router(reporting_router)
     api.include_router(public_router)
+    api.include_router(places_router)
+    api.include_router(app_config_router)
     api.include_router(staff_router)
     api.include_router(subscriptions_router)
     api.include_router(alerting_router)
